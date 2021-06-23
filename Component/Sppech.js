@@ -5,88 +5,79 @@ import {
   Text,
   View,
   TouchableHighlight,
-  ScrollView,
+  Alert,
   TouchableOpacity,
   TextInput,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Picker } from '@react-native-picker/picker';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Voice from '@react-native-community/voice';
 import axios from 'axios';
+import Languages from '../translation.json';
+
 
 const Speech = () => {
-  const [pitch, setPitch] = useState('');
-  const [response, setRes] = useState(null)
-  const [start, setStart] = useState(false)
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState(null)
+  const [start, setStart] = useState(false);
   const [error, setError] = useState('');
+  const [languageCode, setLanguageCode] = useState('')
   const [end, setEnd] = useState('');
   const [text, setText] = useState('')
-  const [started, setStarted] = useState('');
+  const [update, setUpdate] = useState(false);
+  const [empty, setempty] = useState(false)
   const [results, setResults] = useState([]);
-  const [partialResults, setPartialResults] = useState([]);
+
+
   useEffect(() => {
-    Voice.onSpeechStart = onSpeechStart;
-    Voice.onSpeechEnd = onSpeechEnd;
+    AsyncStorage.getItem('lang').then(res => {
+      const lang = JSON.parse(res)
+      setLanguageCode(Languages[lang])
+    }).catch(e => {
+      console.log('nhi ara', e)
+    })
+  }, [update])
+  useEffect(() => {
     Voice.onSpeechError = onSpeechError;
     Voice.onSpeechResults = onSpeechResults;
-    Voice.onSpeechPartialResults = onSpeechPartialResults;
-    Voice.onSpeechVolumeChanged = onSpeechVolumeChanged;
     return () => {
       Voice.destroy().then(Voice.removeAllListeners).catch(e => {
-        console.log('32 catch', e)
+        console.log('41 catch==>', e)
       });
     };
   }, []);
 
-  const onSpeechStart = (e) => {
-    setStarted('√');
-  };
-
-  const onSpeechEnd = (e) => {
-    console.log('onSpeechEnd: ', e);
-    setEnd('√');
-  };
+  
 
   const onSpeechError = (e) => {
-    //Invoked when an error occurs.
-    console.log('onSpeechError: ', e);
     setError(JSON.stringify(e.error));
   };
 
   const onSpeechResults = (e) => {
-    //Invoked when SpeechRecognizer is finished recognizing
-    console.log('onSpeechResults: ', e);
     setResults(e.value);
+    setText(e.value.reverse()[0])
   };
-
-  const onSpeechPartialResults = (e) => {
-    console.log('onSpeechPartialResults: ', e);
-    setPartialResults(e.value);
-  };
-
-  const onSpeechVolumeChanged = (e) => {
-    console.log('onSpeechVolumeChanged: ');
-    setPitch(e.value);
-  };
-
   const startRecognizing = async () => {
     try {
-      await Voice.start('en-US');
-      setPitch('');
+      await Voice.start('en-US'); //yahn pr device language aegi
       setError('');
-      setStarted('');
       setResults([]);
-      setPartialResults([]);
       setEnd('');
-      setStart(!start)
+      setStart(true)
     } catch (e) {
       console.error('85',);
     }
   };
 
   const stopRecognizing = async () => {
-    //Stops listening for speech
+    setStart(false)
     try {
       await Voice.stop();
+      await Voice.cancel();
+      await Voice.destroy();
     } catch (e) {
       //eslint-disable-next-line
       console.error(e);
@@ -95,155 +86,124 @@ const Speech = () => {
 
 
   const send = () => {
-    axios.get(`https://lanugaetransltor.herokuapp.com/tasks?input=${input}&from=${from}&to=${to}`,
-      {
-        headers: { 'Content-Type': 'application/json' }
-      }).then(res => {
-        console.log(res.data);
-        setRes(res.data)
-      }).catch(e => {
-        console.log(e)
-      })
+    if (text) {
+
+      setLoading(true);
+      axios.get(`https://lanugaetransltor.herokuapp.com/tasks?input=${text}&from=en&to=${languageCode}`,
+        {
+          headers: { 'Content-Type': 'application/json' }
+        }).then(res => {
+          setResponse(res.data.ress)
+          setLoading(false)
+        }).catch(e => {
+          Alert.alert(
+            "ERROR!!!",
+            "Cannot Translate...",
+            [
+              { text: "OK" }
+            ]
+          );
+          setLoading(false)
+        })
+    }
+    else {
+      setempty(true)
+    }
   }
 
-  const cancelRecognizing = async () => {
-    //Cancels the speech recognition
-    try {
-      await Voice.cancel();
-    } catch (e) {
-      //eslint-disable-next-line
-      console.error(e);
-    }
-  };
 
-  const destroyRecognizer = async () => {
-    //Destroys the current SpeechRecognizer instance
-    try {
-      await Voice.destroy();
-      setPitch('');
-      setError('');
-      setStarted('');
-      setResults([]);
-      setPartialResults([]);
-      setEnd('');
-    } catch (e) {
-      //eslint-disable-next-line
-      console.error(e);
-    }
-  };
 
+  // const destroyRecognizer = async () => {
+  //   //Destroys the current SpeechRecognizer instance
+  //   try {
+  //     await Voice.destroy();
+  //     setError('');
+  //     setResults([]);
+  //     setEnd('');
+  //   } catch (e) {
+  //     //eslint-disable-next-line
+  //     console.error(e);
+  //   }
+  // };
+
+  const saveLanguage = async lang => {
+    try {
+      const jsonValue = JSON.stringify(lang)
+      await AsyncStorage.setItem('lang', jsonValue);
+      setUpdate(!update)
+    }
+    catch (error) {
+      console.log('cannto set 135')
+    }
+  }
+
+  
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.container}>
-        <View><TextInput textAlign='center' value={text}
-          onChangeText={t => setText(t)} /></View>
-        <TouchableHighlight onPress={startRecognizing}>
-          <FontAwesome name='microphone' color='blue' size={30} />
-        </TouchableHighlight>
-        <TouchableOpacity style={{ width: 50, height: 50, backgroundColor: 'red' }}
-          onPress={send}><Text>Translated into German</Text></TouchableOpacity>
-        <ScrollView>
-          {partialResults.map((result, index) => {
-            return (
-              <Text
-                key={`partial-result-${index}`}
-                style={styles.textStyle}>
-                {result}
-              </Text>
-            );
-          })}
-        </ScrollView>
-        <Text style={styles.textStyle}>
-          Results
-        </Text>
-        <ScrollView style={{ marginBottom: 42 }}>
-          {results.map((result, i) => {
-            return (
-              <TouchableOpacity style={{ backgroundColor: result === select && 'red' }}
-                onPress={() => setText(result)} key={i}>
-                <Text
-                  style={styles.textStyle}>
-                  {result}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-        <View style={styles.horizontalView}>
-          <TouchableHighlight
-            onPress={stopRecognizing}
-            style={styles.buttonStyle}>
-            <Text style={styles.buttonTextStyle}>
-              Stop
-            </Text>
-          </TouchableHighlight>
-          <TouchableHighlight
-            onPress={cancelRecognizing}
-            style={styles.buttonStyle}>
-            <Text style={styles.buttonTextStyle}>
-              Cancel
-            </Text>
-          </TouchableHighlight>
-          <TouchableHighlight
-            onPress={destroyRecognizer}
-            style={styles.buttonStyle}>
-            <Text style={styles.buttonTextStyle}>
-              Remove
-            </Text>
+        <Text style={{ alignSelf: 'flex-start', fontWeight: 'bold' }}> Enter Text  </Text>
+        <View style={styles.vw}>
+          <TextInput textAlign='center' value={text}
+            style={styles.input}
+            placeholder='enter text..'
+            onChangeText={t => { setText(t); setempty(false) }} />
+
+          <TouchableHighlight onPress={start === false ? startRecognizing : stopRecognizing}>
+            <FontAwesome name='microphone'
+              style={{ marginLeft: 5 }}
+              color={start === false ? 'blue' : 'green'} size={width * 0.1} />
           </TouchableHighlight>
         </View>
+        {empty ? <Text style={{margin:5, color: 'red' }}>Please Enter Text</Text> : null}
+        <Picker
+          style={styles.picker}
+          selectedValue={languageCode}
+          onValueChange={lang => saveLanguage(lang)} >
+          {Object.keys(Languages).map((key, i) => {
+            return (<Picker.Item key={i} label={Languages[key]} value={key} />)
+          })}
+        </Picker>
+        {loading ? <ActivityIndicator color='blue' size={height * 0.07} /> :
+          <TouchableOpacity style={styles.btn}
+            onPress={send}>
+            <Text style={{ color: 'white' }}>Translated into {languageCode}</Text>
+          </TouchableOpacity>}
+        <Text>{response}</Text>
       </View>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 };
-export default Speech;
 
+export default Speech;
+const { width, height } = Dimensions.get('window')
 const styles = StyleSheet.create({
+  input: {
+    height: height * 0.065,
+    width: width * 0.85, borderRadius: 20,
+    backgroundColor: 'lightgray'
+  },
   container: {
     flex: 1,
     flexDirection: 'column',
     alignItems: 'center',
     padding: 5,
   },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
+  picker: {
+    width: width * 0.8, height: 50,
+    borderWidth: 1,
+    borderRadius: 10, borderColor: 'gray'
   },
-  titleText: {
-    fontSize: 22,
-    textAlign: 'center',
-    fontWeight: 'bold',
+  vw: {
+    display: 'flex', flexDirection: 'row',
+    justifyContent: 'space-between'
   },
-  buttonStyle: {
-    flex: 1,
+  btn: {
+    width: width * 0.9,
+    height: height * 0.07,
+    borderRadius: 20,
+    alignContent: 'center',
     justifyContent: 'center',
-    marginTop: 15,
-    padding: 10,
-    backgroundColor: '#8ad24e',
-    marginRight: 2,
-    marginLeft: 2,
-  },
-  buttonTextStyle: {
-    color: '#fff',
-    textAlign: 'center',
-  },
-  horizontalView: {
-    flexDirection: 'row',
-    position: 'absolute',
-    bottom: 0,
-  },
-  textStyle: {
-    textAlign: 'center',
-    padding: 12,
-  },
-  imageButton: {
-    width: 50,
-    height: 50,
-  },
-  textWithSpaceStyle: {
-    flex: 1,
-    textAlign: 'center',
-    color: '#B0171F',
+    alignItems: 'center',
+    backgroundColor: 'blue',
   },
 });
